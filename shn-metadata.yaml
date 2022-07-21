@@ -1,0 +1,7 @@
+---
+v: 2
+id: agentless
+ports:
+ - port: 5000
+   description: "No actual service is listening on this port 5000, purpose is to just to discover ip address of this node"
+...

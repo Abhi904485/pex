@@ -1,0 +1,141 @@
+#!/usr/bin/env bash
+set +ex
+password=$1
+set -ex
+
+chmod +x setup.py
+
+VENV="_venv"
+cat <<'EOF' > .create_virtualenv.py
+import itertools
+import os
+import sys
+try:
+    from urllib.request import urlopen
+except ImportError:
+    from urllib2 import urlopen
+
+def get_requirements(filename):
+    print(filename)
+    return [
+        line for line in (
+            line.split('#')[0].strip() for line in iter(open(filename).readline, '')
+        ) if line and not line.startswith('-')
+    ]
+
+# REQUIREMENTS = list(itertools.chain(*[get_requirements(f) for f in ['requirements.txt', 'requirements_test.txt'] if os.path.exists(f)]))
+REQUIREMENTS = ['requests', 'pip-tools<5.0.0']
+
+PIP_OPTIONS = '--index-url http://artifactory.corp.int.shn.io/api/pypi/pypi/simple --trusted-host artifactory.corp.int.shn.io'
+PYPI_URL = 'http://artifactory.corp.int.shn.io/api/pypi/pypi'
+GET_PIP_URL = 'https://artifactory.corp.int.shn.io/shn-support-tools/v2/get-pip.py'
+# START boilerplate
+try:
+    import pkg_resources
+    pkg_resources.require(REQUIREMENTS)
+except Exception as exc:
+    try:
+        import magicreq
+        print('Failed to find requirements: %r. Calling magicreq.magic.' % (exc,))
+        magicreq.magic(
+            REQUIREMENTS,
+            pip_options=PIP_OPTIONS,
+            pypi_url=PYPI_URL,
+            get_pip_url=GET_PIP_URL
+        )
+    except ImportError:
+        print('Failed to find requirements: %r. Also failed to find magicreq. Bootstrapping magicreq.' % (exc,))
+        url = 'http://artifactory.corp.int.shn.io/shn-support-tools/magicreq_bootstrap.py'
+        bootstrap_script = os.path.join(os.getcwd(), '.magicreq_bootstrap.py')
+        with open(bootstrap_script, 'w') as outfile:
+            outfile.write(urlopen(url).read())
+        cmd = [
+            sys.executable,
+            bootstrap_script,
+            'PIP_OPTIONS:%s' % (PIP_OPTIONS,),
+            'PYPI_URL:%s' % (PYPI_URL,),
+            'GET_PIP_URL:%s' % (GET_PIP_URL,),
+        ] + sys.argv
+        os.execv(sys.executable, cmd)
+print('Virtualenv bootstrapped')
+EOF
+python .create_virtualenv.py
+. "${VENV}/bin/activate"
+
+ARTI_HOST="artifactory.corp.int.shn.io"
+SHN_PYPI_BASE="http://${ARTI_HOST}:8081/artifactory/api/pypi/pypi"
+SHN_PYPI="${SHN_PYPI_BASE}/simple"
+PIP_OPTIONS="--index-url ${SHN_PYPI} --trusted-host ${ARTI_HOST}"
+# PACKAGE_NAME="$(python setup.py --name)"
+# PACKAGE_VERSION="$(python setup.py --version)"
+# PEX_ROOT=".pex-cache"
+# VENV="_venv0"
+# BUILD_DIR="build"
+# VENV_VERSION="15.0.0"
+# PYPI_VENV_BASE="${SHN_PYPI_BASE}/packages/source/v/virtualenv"
+# VENV_DIRNAME="virtualenv-${VENV_VERSION}"
+# tgz_file="${VENV_DIRNAME}.tar.gz"
+# venv_url="${PYPI_VENV_BASE}/${tgz_file}"
+# curl -O "${venv_url}"
+# tar xzf "${tgz_file}"
+# python "${VENV_DIRNAME}/virtualenv.py" --no-site-packages --always-copy "${VENV}"
+# "${VENV}/bin/pip" install "${tgz_file}"
+# rm -rf "${VENV_DIRNAME}" "${tgz_file}"
+
+# source "${VENV}/bin/activate"
+
+pip install ${PIP_OPTIONS} 'pip<18.1' 'setuptools<45.0.0' wheel
+# pip install ${PIP_OPTIONS} requests pip-tools
+
+for r in requirements.txt requirements_test.txt; do
+    if [ -e "${r}" ]; then
+        echo Resolving dependencies for $r
+        cp "${r}" "${r}".orig
+        pip-compile --annotate --build-isolation --no-emit-trusted-host --no-index ${PIP_OPTIONS} "${r}".orig -o "${r}".new
+        cat "${r}.new" | grep -v argparse > "${r}"
+        echo Resolved dependencies for $r
+        cat "${r}"
+    fi
+done
+
+for req in $(ls *requirements*.txt shn_bin/*requirements*.txt); do
+    if [ -e $req ]; then
+        pip install ${PIP_OPTIONS} -r "${req}"
+    fi
+done
+
+MYDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" > /dev/null && pwd)"
+
+PACKAGE_NAME="$(python setup.py --name)"
+PACKAGE_VERSION="$(python setup.py --version)"
+
+./run_tests || { echo 'Tests failed' ; exit 1; }
+python validate_templates_test.py || echo 'validation of templates failed'
+
+ARTIDEV_PYPI_BASE="http://artifactory.corp.int.shn.io/api/pypi"
+HOME_OLD="${HOME}"
+HOME="$(pwd)"
+export HOME
+cat <<EOM > .pypirc
+[distutils]
+index-servers =
+ shn-pypi
+
+[shn-pypi]
+repository:${ARTIDEV_PYPI_BASE}/shn-pypi
+username:deployment_role
+password:${password}
+EOM
+
+"${MYDIR}"/setversion.sh
+if python setup.py sdist upload -r shn-pypi | tail -n1 | grep "Server response (200): OK"; then
+    run_status=0
+else
+    run_status=1
+fi
+
+export HOME="${HOME_OLD}"
+deactivate
+rm -f .pypirc .create_virtualenv.py
+rm -rf $VENV
+exit "${run_status}"

@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+set -ex
+#run tests
+if [ ! -e run_tests ]; then
+    cp shnbin_scripts/run_tests ./
+fi
+
+ARTI_HOST="artifactory.corp.int.shn.io"
+SHN_PYPI_BASE="http://${ARTI_HOST}:8081/artifactory/api/pypi/pypi"
+SHN_PYPI="${SHN_PYPI_BASE}/simple"
+PIP_OPTIONS="--index-url ${SHN_PYPI} --trusted-host ${ARTI_HOST}"
+PACKAGE_NAME="$(python setup.py --name)"
+PACKAGE_VERSION="$(python setup.py --version)"
+PEX_ROOT=".pex-cache"
+VENV="_venv"
+BUILD_DIR="build"
+VENV_VERSION="15.0.0"
+PYPI_VENV_BASE="${SHN_PYPI_BASE}/packages/source/v/virtualenv"
+VENV_DIRNAME="virtualenv-${VENV_VERSION}"
+tgz_file="${VENV_DIRNAME}.tar.gz"
+venv_url="${PYPI_VENV_BASE}/${tgz_file}"
+curl -O "${venv_url}"
+tar xzf "${tgz_file}"
+python "${VENV_DIRNAME}/virtualenv.py" --no-site-packages --always-copy "${VENV}"
+"${VENV}/bin/pip" install "${tgz_file}"
+rm -rf "${VENV_DIRNAME}" "${tgz_file}"
+
+source "${VENV}/bin/activate"
+pip install ${PIP_OPTIONS} pip 'setuptools<45.0.0' wheel
+pip install ${PIP_OPTIONS} requests pip-tools
+
+for r in requirements.txt test-requirements.txt run_tests_requirements.txt; do
+    if [ -e "${r}" ]; then
+        echo Resolving dependencies for $r
+        cp "${r}" "${r}".orig
+        pip-compile --annotate --build-isolation --no-emit-trusted-host --no-index ${PIP_OPTIONS} "${r}".orig -o "${r}".new
+        cat "${r}.new" | grep -v argparse > "${r}"
+        echo Resolved dependencies for $r
+        cat "${r}"
+    fi
+done
+
+./run_tests

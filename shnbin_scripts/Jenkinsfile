@@ -1,0 +1,22 @@
+stage('Upload run_tests') {
+    def server = Artifactory.server '569358111@1447041126133'
+    node('corp&&maven') {
+        timeout(time: 10, unit: 'MINUTES') {
+            wrap([$class: 'MaskPasswordsBuildWrapper']) {
+                wrap([$class: 'TimestamperBuildWrapper']) {
+                    checkout scm
+
+                    def uploadSpec = """{
+                        "files": [
+                            {
+                                "pattern": "run_tests",
+                                "target": "shn-misc/"
+                            }
+                        ]
+                    }"""
+                    server.upload(uploadSpec)
+                }
+            }
+        }
+    }
+}

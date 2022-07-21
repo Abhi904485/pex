@@ -1,0 +1,68 @@
+[tool.poetry]
+name = "agentless"
+version = "0.1.0"
+readme = "README.md"
+description = "Agentless python utility"
+authors = ["Abhishek Kumar Singh <abhishek.kumarsingh@skyhighsecurity.com>"]
+homepage = "http://fisheye.corp.int.shn.io"
+repository = "SHN SVN"
+packages = [
+    {include="agentless"},
+]
+license = "MIT"
+
+[tool.poetry.dependencies]
+python = "^3.9,<3.11"
+boto3= "1.23.8"
+botocore="1.26.8"
+tenacity="8.0.1"
+ec2-metadata = "^2.9.1"
+blkinfo="~0.2.0"
+SQLAlchemy="~1.4.29"
+docopt = "^0.6.2"
+more-itertools = "^8.12.0"
+eventlet = "^0.33.0"
+requests = "^2.27.1"
+"reversefold.util" = "^3.5.5"
+setproctitle = "^1.2.2"
+shnbin-common= "1.0.387"
+nosecount = "^5.0.0"
+
+[[tool.poetry.source]]
+name = "shn"
+url = "https://artifactory.corp.int.shn.io/api/pypi/pypi/simple/"
+default = true
+
+[tool.poetry.scripts]
+
+[tool.poetry.dev-dependencies]
+coverage = "^6.3.2"
+nose = "^1.3.7"
+tox = "^3.24.5"
+pex = "^2.1.76"
+ianitor = "^0.1.0"
+wheel = "^0.37.1"
+tomlkit = "^0.10.1"
+shnbin-common = "^1.0.381"
+setuptools-scm = "^6.4.2"
+jupyter = "^1.0.0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _venv
+  | _build
+  | build
+  | dist
+)/
+'''

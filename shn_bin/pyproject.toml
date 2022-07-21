@@ -1,0 +1,37 @@
+[build-system]
+requires = ["poetry>=0.12,<1.0.0"]
+build-backend = "poetry.masonry.api"
+
+[tool.poetry]
+name = "shnbin_agentless"
+version = "1.0.0"
+description = "Shnbin for Agentless"
+readme = "README.md"
+authors = ["Abhishek Kumar Singh <abhishek.kumarsingh@skyhighsecurity.com>"]
+homepage = "http://fisheye.corp.int.shn.io"
+repository = "SHN SVN"
+packages = [
+    {include="shnbin_agentless"},
+]
+license = "MIT"
+
+[[tool.poetry.source]]
+name = "shn"
+url = "https://artifactory.corp.int.shn.io/api/pypi/pypi/simple/"
+default = true
+
+[tool.poetry.scripts]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+psutil = "^5.6"
+"reversefold.util" = ">=3.5.4,<4.0"
+shnbin-common = "^1.0"
+
+[tool.poetry.dev-dependencies]
+coverage = "^4.5"
+nose = "^1.3"
+tox = "^3.14"
+pex = "^2.0"
+ianitor = "^0.1.0"
+wheel = "^0.33.6"

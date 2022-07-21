@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+#The script to publish a shnbin project. It does follwoing:
+#prepare virtual environment
+#prepare shnbin project source
+#buld shnbin project pex
+set -ex
+#should always run in virtual env
+IS_VENV="yes"
+ARTI_HOST="artifactory.corp.int.shn.io"
+SHN_PYPI_BASE="http://${ARTI_HOST}:8081/artifactory/api/pypi/pypi"
+SHN_PYPI="${SHN_PYPI_BASE}/simple"
+PIP_OPTIONS="--index-url ${SHN_PYPI} --trusted-host ${ARTI_HOST}"
+PACKAGE_NAME="$(python setup.py --name)"
+PACKAGE_VERSION="$(python setup.py --version)"
+PEX_ROOT=".pex-cache"
+VENV="_venv"
+BUILD_DIR="build"
+PEX_VERSION="2.1.0"
+rm -rf -- "${BUILD_DIR}" "${PEX_ROOT}"
+rm -rf -- *.tar.gz *.pex *.egg-info
+
+#prepare virtual env
+if [[ "${IS_VENV}" == "yes" ]]; then
+    if [ ! -e "${VENV}/bin/activate" ]; then
+        rm -rf ${VENV}
+        #create virtual environ
+        VENV_VERSION="15.0.0"
+        PYPI_VENV_BASE="${SHN_PYPI_BASE}/packages/source/v/virtualenv"
+        VENV_DIRNAME="virtualenv-${VENV_VERSION}"
+        tgz_file="${VENV_DIRNAME}.tar.gz"
+        venv_url="${PYPI_VENV_BASE}/${tgz_file}"
+        curl -O "${venv_url}"
+        tar xzf "${tgz_file}"
+        python "${VENV_DIRNAME}/virtualenv.py" --no-site-packages --always-copy "${VENV}"
+        "${VENV}/bin/pip" install "${tgz_file}"
+        rm -rf "${VENV_DIRNAME}" "${tgz_file}"
+    fi
+    source "${VENV}/bin/activate"
+    # NOTE: These pip and setuptools versions are required for python 2.7
+    curl -k https://artifactory.corp.int.shn.io/shn-support-tools/v2/get-pip.py --output get-pip.py   # get pip for python2
+    python get-pip.py        # install pip in your virtualenv
+    pip install ${PIP_OPTIONS} 'pip<18.1' 'setuptools<45.0.0' wheel
+    pip install ${PIP_OPTIONS} "pex==${PEX_VERSION}" requests 'pip-tools<5.0.0'
+    # NOTE: subprocess32 required only for python 2.7
+    pex "pex==${PEX_VERSION}" requests subprocess32 -c pex -o pex.pex --disable-cache -i "${SHN_PYPI}" -v
+
+    for r in requirements.txt test-requirements.txt run_tests_requirements.txt; do
+        if [ -e "${r}" ]; then
+            echo Resolving dependencies for $r
+            cp "${r}" "${r}".orig
+            pip-compile --annotate --build-isolation --no-emit-trusted-host --no-index ${PIP_OPTIONS} "${r}".orig -o "${r}".new
+            cat "${r}.new" | grep -v argparse | grep -v pyobjc > "${r}"
+            echo Resolved dependencies for $r
+            cat "${r}"
+        fi
+    done
+
+    for req in $(ls *requirements*.txt shn_bin/*requirements*.txt); do
+        if [ -e $req ]; then
+            pip install ${PIP_OPTIONS} -r "${req}"
+        fi
+    done
+fi
+rm -f -- *.tgz
+
+mkdir "${BUILD_DIR}"
+#run tests
+if [ ! -e run_tests ]; then
+    cp shnbin_scripts/run_tests ./
+fi
+./run_tests || { exit 1; }
+#prepare source directories to create shnbin_$package.pex
+#create dir shnbin_$package, move all source files in shn_bin to this dir.
+#if shnbin_$package does not have __init__.py, create an empty one for it to make it a package.
+#move main.py from shnbin_scripts to shnbin_$package
+#create a new shn_bin, move all the wrapper .py files from shnbin_scripts to shn_bin
+#if the project does not not a ad-hoc run_tests file, copy a default from shnbin_script to it
+
+#shn_bin_copy is the copy of the shn_bin used to restore shn_bin to the original after the pex and wrap-up is done
+rm -rf shn_bin_copy
+cp -r shn_bin shn_bin_copy
+
+rm -rf -- "${PACKAGE_NAME}"
+cp -r -- shn_bin "${PACKAGE_NAME}"
+
+touch "${PACKAGE_NAME}/__init__.py"
+cp shnbin_scripts/main.py "${PACKAGE_NAME}/"
+
+#Build .pex file for the shnbin proj
+PEX_ROOT="${PEX_ROOT}" ./pex.pex . -r "requirements.txt" -o "${PACKAGE_NAME}.pex" -m "${PACKAGE_NAME}.main" --disable-cache -i "${SHN_PYPI}" -v
+
+# Verify if pex loads correctly
+echo "Verifying if pex loads correctly"
+PEX_ROOT="${PEX_ROOT}" "./${PACKAGE_NAME}.pex" -h
+
+#prepare shn_bin. need setup.py to find pex file name when deploy. This shn_bin contains the wrap-up functions
+for action in configure install monitor start stop unconfigure uninstall; do
+    if [ ! -e "shn_bin/${action}.py" ]; then
+        rm "shnbin_scripts/${action}.py"
+    else
+        chmod +x "shnbin_scripts/${action}.py"
+    fi
+done
+
+#when shn_bin/install.py does not exist, still need to run shnbin_scripts/install_without.py to prepare shn_bin
+if [ ! -e shn_bin/install.py ]; then
+    mv shnbin_scripts/install_without.py shnbin_scripts/install.py
+    chmod +x shnbin_scripts/install.py
+else
+    rm shnbin_scripts/install_without.py
+fi
+
+rm -f shn_bin/*.py shn_bin/*.pyc
+cp shnbin_scripts/*.py shn_bin
+cp "${PACKAGE_NAME}.pex" shn_bin
+cp setup.py shn_bin
+
+# Output the name of the shnbin to pexfilename to avoid running setup.py during shnbin runtime
+if [ -e shn_bin/pexfilename ]; then
+    echo shn_bin/pexfilename already exists, we will overwrite it
+fi
+python setup.py --name > shn_bin/pexfilename
+
+#Cleanup
+if [[ "${IS_VENV}" == "yes" ]]; then
+    deactivate
+    rm -rf -- "${PEX_ROOT}"
+    rm -f pex.pex
+fi

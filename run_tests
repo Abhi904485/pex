@@ -1,0 +1,2 @@
+#!/bin/bash
+curl http://artifactory.corp.int.shn.io/shn-misc/run_tests | python

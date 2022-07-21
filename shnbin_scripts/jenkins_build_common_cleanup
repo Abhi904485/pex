@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+
+rm -rf shn_bin
+mv shn_bin_copy shn_bin
+

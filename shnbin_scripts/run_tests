@@ -1,0 +1,175 @@
+#!/usr/bin/env python
+# Style based on: http://google-styleguide.googlecode.com/svn/trunk/pyguide.html
+# Exception: 100 characters width.
+""" The default script to run test cases for a shnbin project"""
+import ConfigParser
+import contextlib
+import functools
+import glob
+import itertools
+import logging
+import os
+import subprocess
+import sys
+import types
+
+
+# If we're being run by being piped into python, download us and re-run us so that magicreq works
+if __file__ == '<stdin>':
+    if not os.path.exists('.run_tests.py'):
+        with open('.run_tests.py', 'w') as out:
+            subprocess.check_call(['curl', 'http://artifactory.corp.int.shn.io/shn-misc/run_tests'], stdout=out)
+    os.execv(sys.executable, [sys.executable, '.run_tests.py'])
+
+
+PY_ENV0_DIR = '_venv'
+
+
+REQUIREMENTS = list(set(itertools.chain.from_iterable(
+    [
+        line for line in (
+            # If there is a # in the line, use only the part before the #
+            line.split('#')[0].strip()
+            for line in iter(open(req_filename).readline, '')
+        ) if line and not line.startswith('-') and not line.startswith('#')
+    ]
+    for req_filename in (glob.glob('*requirements*.txt') + glob.glob('shn_bin/*requirements*.txt'))
+)))
+
+try:
+    import pkg_resources
+    pkg_resources.require(REQUIREMENTS)
+
+# We're expecting ImportError or pkg_resources.ResolutionError but since pkg_resources might not be importable,
+# we're just catching Exception.
+except Exception as exc:
+    # if not isinstance(exc, ImportError) and isinstance(exc, pkg_resources.VersionConflict):
+    #     raise
+    PIP_OPTIONS = '--index-url http://artifactory.corp.int.shn.io/api/pypi/pypi/simple --trusted-host artifactory.corp.int.shn.io'
+    PYPI_URL = 'http://artifactory.corp.int.shn.io/api/pypi/pypi'
+    GET_PIP_URL = 'https://artifactory.corp.int.shn.io/shn-support-tools/v2/get-pip.py'
+    if __name__ != '__main__':
+        raise
+    try:
+        import magicreq
+        print('Failed to find requirements: %r. Calling magicreq.magic.' % (exc,))
+        magicreq.magic(
+            REQUIREMENTS,
+            pip_options=PIP_OPTIONS,
+            pypi_url=PYPI_URL,
+            get_pip_url=GET_PIP_URL
+        )
+    except ImportError:
+        print('Failed to find requirements: %r. Also failed to find magicreq. Bootstrapping magicreq.' % (exc,))
+        url = 'http://artifactory.corp.int.shn.io/shn-support-tools/magicreq_bootstrap.py'
+        curl = subprocess.Popen(['curl', '-sS', url], stdout=subprocess.PIPE)
+        python = subprocess.Popen(
+            [
+                sys.executable,
+                '-',
+                'PIP_OPTIONS:%s' % (PIP_OPTIONS,),
+                'PYPI_URL:%s' % (PYPI_URL,),
+                'GET_PIP_URL:%s' % (GET_PIP_URL,),
+            ] + sys.argv,
+            stdin=curl.stdout
+        )
+        curl.wait()
+        python.wait()
+        sys.exit(curl.returncode or python.returncode)
+
+
+class Error(Exception):
+    pass
+
+
+@contextlib.contextmanager
+def chdir(new_path):
+    old_path = os.getcwd()
+    os.chdir(new_path)
+    try:
+        yield
+    finally:
+        os.chdir(old_path)
+
+
+def force_line_buffer():
+    logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s', level=logging.INFO)
+    if hasattr(sys.stdout, 'fileno'):
+        # Force stdout to be line-buffered
+        sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 1)
+
+
+def logged_call(cmd, env=None, shell=False, check=True):
+    """Call the given command.
+
+    Args:
+        cmd: A string or list of strings, the command to run.
+        env: A dictionary, overrides the environment variables for the called process. Default is
+            None (use the current environment variables).
+        shell: A boolean, if True call the process through a shell (insecure). Default is False.
+        check: A boolean, if True raise an exception when the exit code is non zero. If False return
+            the exit code of the called process.
+
+    Returns:
+        An integer, the exit code of the process.
+
+    Raises:
+        subprocess.CalledProcessError, if check True and the process returned a non-zero exit code.
+    """
+    logging.info('> ' + (cmd if isinstance(cmd, types.StringTypes) else ' '.join(cmd)))
+    if check:
+        return subprocess.check_call(cmd, env=env, shell=shell)
+    else:
+        return subprocess.call(cmd, env=env, shell=shell)
+
+
+def get_modules():
+    class Helper(object):
+        def __init__(self, section, file):
+            self.readline = functools.partial(
+                next,
+                itertools.chain(
+                    ('[{0}]\n'.format(section),), file, ('',)
+                )
+            )
+
+    config = ConfigParser.SafeConfigParser(allow_no_value=True)
+    with open('sonar-project.properties') as ifh:
+        config.readfp(Helper('Sonar', ifh))
+    return config.get('Sonar', 'sonar.sources').split(',')
+
+
+def get_nose_opts():
+    nose_opts = [
+        '-v', '--with-xunit', '--cover-erase', '--with-coverage',
+        '--cover-erase', '--cover-branches', '--cover-xml', '--cover-html'
+    ]
+    try:
+        import rednose
+        nose_opts.append('--rednose')
+    except ImportError:
+        pass
+    return nose_opts
+
+
+def main(argv):
+    """main"""
+    with chdir(os.path.dirname(os.path.abspath(__file__))):
+        modules = get_modules()
+        logging.info('Checking modules: %s', modules)
+        logged_call(['find'] + modules + ['-name', '*_test.py', '-exec', 'chmod', '-x', '{}', '+'])
+        unwanted_files = ['coverage.xml', 'nosetests.xml', 'pylint-report.txt', 'cover']
+        for unwanted in unwanted_files:
+            if os.path.exists(unwanted):
+                logged_call(['rm', '-rf', unwanted])
+        nose_opts = get_nose_opts() + argv[1:]
+        nosetests = os.path.join(PY_ENV0_DIR, 'bin', 'nosetests')
+        if not os.path.exists(nosetests):
+            nosetests = 'nosetests'
+        logged_call([nosetests] + nose_opts + ['--cover-package=' + ','.join(modules)] + modules)
+        logging.info('Ready to run sonar-runner')
+
+
+if __name__ == '__main__':
+    force_line_buffer()
+    sys.exit(main(sys.argv))
