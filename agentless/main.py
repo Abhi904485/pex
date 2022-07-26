@@ -591,7 +591,7 @@ class AgentLess:
             self.logger.error("mounted_path {} creation failed".format(mounted_path), extra=self.extra)
             raise Exception("mounted_path {} creation failed".format(mounted_path))
 
-        if not self.mount_volume(path=path, tenant_id=self.tenant_id, scan_id=self.scan_id, instance_id=self.ec2_instance_id, snapshot_id=snapshot_id):
+        if not self.mount_volume(path=path, tenant_id=self.tenant_id, scan_id=self.scan_id, instance_id=instance_id, snapshot_id=snapshot_id):
             self.detach_volume(instance_id=self.ec2_instance_id, volume_id=volume_id)
             self.utility.release_device(device=self.device, logger=self.logger, extra=self.extra)
             self.delete_volume(volume_id=volume_id)
