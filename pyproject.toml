@@ -27,6 +27,7 @@ requests = "^2.27.1"
 setproctitle = "^1.2.2"
 shnbin-common= "1.0.387"
 nosecount = "^5.0.0"
+shnbin-eureka-common = "^1.0.417"
 
 [[tool.poetry.source]]
 name = "shn"
@@ -44,6 +45,7 @@ ianitor = "^0.1.0"
 wheel = "^0.37.1"
 tomlkit = "^0.10.1"
 shnbin-common = "^1.0.381"
+shnbin-eureka-common = "^1.0.417"
 setuptools-scm = "^6.4.2"
 jupyter = "^1.0.0"
 

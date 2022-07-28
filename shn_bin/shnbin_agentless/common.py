@@ -20,6 +20,7 @@ class Error(Exception):
 def get_config_path():
     return os.path.join(get_app_current_path(), 'config')
 
+
 def get_eureka_sidecar_helper():
     """No actual service is listening on this port 5000, purpose is to just to discover ip address of this node"""
     return eureka_common.EurekaSidecarHelper(
@@ -38,4 +39,15 @@ def get_eureka_url():
                     for host in get_hosts('eureka'))
 
 
-                
+def get_appname():
+    return "agentless"
+
+
+def get_app_path():
+    return os.path.join("/shn/apps", get_appname())
+
+
+def is_salt_managed():
+    return os.path.realpath(shnbin_common.get_app_current_path()).startswith(
+        get_app_path()
+    )

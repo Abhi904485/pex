@@ -1,8 +1,8 @@
 --index-url https://artifactory.corp.int.shn.io/api/pypi/pypi/simple
 
 argh==0.26.2; python_version > "3.4" and python_version < "4"
-boto3==1.24.33; python_version >= "3.8" and python_version < "4.0"
-botocore==1.27.33; python_version >= "3.7"
+boto3==1.24.38; python_version >= "3.8" and python_version < "4.0"
+botocore==1.27.38; python_version >= "3.7"
 certifi==2022.6.15; python_version >= "3.7" and python_version < "4"
 charset-normalizer==2.1.0; python_version >= "3.7" and python_version < "4" and python_full_version >= "3.6.0"
 colorama==0.4.5; python_version > "3.4" and python_full_version < "3.0.0" and python_version < "4" or python_version > "3.4" and python_version < "4" and python_full_version >= "3.5.0"
@@ -25,8 +25,9 @@ requests==2.28.1; python_version >= "3.7" and python_version < "4"
 reversefold.util==3.5.5; python_version > "3.4" and python_version < "4"
 s3transfer==0.6.0; python_version >= "3.7"
 shnbin-common==1.0.387
+shnbin-eureka-common==1.0.417
 shnbin-passcrypt==1.0.88
 six==1.16.0; python_version >= "3.7" and python_full_version < "3.0.0" and python_version < "4" or python_version >= "3.7" and python_version < "4" and python_full_version >= "3.3.0"
 tenacity==8.0.1; python_version >= "3.8" and python_version < "4.0"
-urllib3==1.26.10; python_version >= "3.7" and python_full_version < "3.0.0" and python_version < "4" or python_full_version >= "3.6.0" and python_version < "4" and python_version >= "3.7"
+urllib3==1.26.11; python_version >= "3.7" and python_full_version < "3.0.0" and python_version < "4" or python_full_version >= "3.6.0" and python_version < "4" and python_version >= "3.7"
 watchdog==0.9.0; python_version > "3.4" and python_version < "4"

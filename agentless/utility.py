@@ -26,6 +26,8 @@ class Utility:
             logger.info("Devices already populated {}".format(devices), extra=extra)
             return {'device': [(device.value, device.status) for device in devices]}
         else:
+            # Recommended device names for Linux: /dev/sda1 for root volume. /dev/sd[f-p] for data volumes.
+            # Above info shown when mounting a volume from AWS console.
             with self.lock:
                 for i in 'fghijklmnop':
                     device = Device(value=('/dev/sd{}'.format(i)), status=True)
